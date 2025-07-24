@@ -364,8 +364,9 @@
             try {
                 showAlert('info', '최신 데이터를 불러오는 중...');
                 
-                // GitHub에서 book_study_data.txt 파일 읽기
-                const response = await fetch('./book_study_data.txt');
+                // GitHub에서 book_study_data.txt 파일 읽기 (캐시 방지)
+                const cacheBuster = new Date().getTime();
+                const response = await fetch(`./book_study_data.txt?v=${cacheBuster}`);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -379,8 +380,13 @@
                 // TSV를 CSV로 변환 (탭을 쉼표로)
                 const csvConverted = csvData.replace(/\t/g, ',');
                 
-                // 데이터 분석 및 시각화
-                const result = analyzeCSVData(csvConverted);
+                // 데이터 분석 및 시각화 (오류 방지 강화)
+                const result = analyzeCSVDataSafely(csvConverted);
+                
+                if (!result || !result.clusters || result.clusters.length === 0) {
+                    throw new Error('유효한 클러스터 데이터가 생성되지 않았습니다.');
+                }
+                
                 renderTopologyVisualization(result);
                 updateStats(result);
                 setupClusterControls(result);
@@ -394,6 +400,178 @@
                 console.error('데이터 로드 오류:', error);
                 showAlert('error', `데이터 로드 실패: ${error.message}. 샘플 데이터를 표시합니다.`);
                 loadSampleData();
+            }
+        }
+        
+        // 안전한 데이터 분석 함수 (오류 방지 강화)
+        function analyzeCSVDataSafely(csvData) {
+            try {
+                const lines = csvData.trim().split('\n');
+                const responses = [];
+                
+                // 최소 2줄 이상 있어야 함 (헤더 + 데이터)
+                if (lines.length < 2) {
+                    console.warn('데이터가 너무 적습니다. 샘플 데이터를 사용합니다.');
+                    return null;
+                }
+                
+                // CSV 파싱 - 오류 방지 강화
+                for (let i = 1; i < lines.length; i++) {
+                    try {
+                        const values = parseCSVLine(lines[i]);
+                        
+                        // 최소 조건 확인 (B열 이름, C열 내용 중 하나라도 있으면 유효)
+                        if (values.length >= 2) {
+                            const name = values[1] ? values[1].replace(/"/g, '').trim() : '';
+                            const cColumnRaw = values[2] ? values[2].replace(/"/g, '').trim() : '';
+                            
+                            // 유효한 데이터만 추가
+                            if (name || cColumnRaw) {
+                                const response = {
+                                    name: name || `응답자${i}`,
+                                    keywords: cColumnRaw ? cColumnRaw.split(/[,\s]+/).filter(k => k.trim()) : ['기타'],
+                                    summary: values[3] ? values[3].replace(/"/g, '').trim() : '',
+                                    interpretation: values[4] ? values[4].replace(/"/g, '').trim() : '',
+                                    cColumnData: cColumnRaw || '내용 없음'
+                                };
+                                responses.push(response);
+                            }
+                        }
+                    } catch (rowError) {
+                        console.warn(`행 ${i} 파싱 오류:`, rowError);
+                        continue; // 해당 행만 건너뛰고 계속 진행
+                    }
+                }
+                
+                console.log(`파싱 완료: ${responses.length}개 응답 처리됨`);
+                
+                if (responses.length === 0) {
+                    console.warn('유효한 응답이 없습니다.');
+                    return null;
+                }
+                
+                // 클러스터링 (오류 방지)
+                const clusters = performAutomaticClusteringSafely(responses);
+                
+                if (!clusters || clusters.length === 0) {
+                    console.warn('클러스터 생성 실패');
+                    return null;
+                }
+                
+                // 좌표 계산
+                const coordinates = calculateAutoCoordinates(clusters);
+                
+                // 중심 개념 결정
+                const allKeywords = responses.flatMap(r => r.keywords || []);
+                const keywordFreq = {};
+                allKeywords.forEach(k => {
+                    if (k && k.trim()) {
+                        keywordFreq[k] = (keywordFreq[k] || 0) + 1;
+                    }
+                });
+                
+                const centerConcept = Object.keys(keywordFreq).length > 0 ? 
+                    Object.entries(keywordFreq).sort((a, b) => b[1] - a[1])[0]?.[0] : '디지털웰빙';
+                
+                return {
+                    responses,
+                    clusters,
+                    coordinates,
+                    centerConcept: '디지털웰빙',
+                    stats: {
+                        totalResponses: responses.length,
+                        totalKeywords: Object.keys(keywordFreq).length,
+                        clusterCount: clusters.length
+                    }
+                };
+                
+            } catch (error) {
+                console.error('데이터 분석 중 오류:', error);
+                return null;
+            }
+        }
+        
+        // 안전한 클러스터링 함수
+        function performAutomaticClusteringSafely(responses) {
+            try {
+                const clusterSeeds = [
+                    { name: "환경설계", keywords: ["물리적환경", "공간배치", "트리거설정", "환경디자인"], color: "red" },
+                    { name: "개인성장", keywords: ["정체성", "자아개발", "마음가짐", "내적변화", "성장마인드"], color: "yellow" },
+                    { name: "시스템사고", keywords: ["시스템", "프로세스", "체계적", "구조화", "방법론"], color: "blue" },
+                    { name: "지속성", keywords: ["반복", "루틴", "꾸준함", "지속가능", "일관성", "습관화"], color: "green" },
+                    { name: "사회적관계", keywords: ["관계", "공동체", "사회적책임", "동료", "협력", "네트워크"], color: "purple" },
+                    { name: "점진적변화", keywords: ["작은변화", "복리효과", "누적", "단계적", "점진적개선"], color: "orange" },
+                    { name: "감정동기", keywords: ["감정", "동기부여", "만족감", "성취감", "자신감"], color: "pink" },
+                    { name: "실용적도구", keywords: ["도구", "기술활용", "앱", "디지털도구", "실행방법"], color: "cyan" }
+                ];
+                
+                const clusters = [];
+                let totalAssigned = 0;
+                
+                // 모든 응답을 순회하며 클러스터에 배정
+                responses.forEach((response, index) => {
+                    try {
+                        let bestMatch = { score: 0, cluster: null };
+                        
+                        // 키워드 매칭 (안전하게)
+                        clusterSeeds.forEach(seed => {
+                            try {
+                                const keywords = response.keywords || [];
+                                const matchScore = keywords.filter(keyword => {
+                                    if (!keyword || typeof keyword !== 'string') return false;
+                                    return seed.keywords.some(seedKeyword => {
+                                        if (!seedKeyword || typeof seedKeyword !== 'string') return false;
+                                        const kw = keyword.toLowerCase().trim();
+                                        const sw = seedKeyword.toLowerCase().trim();
+                                        return kw === sw || 
+                                               (kw.length > 2 && sw.includes(kw)) ||
+                                               (sw.length > 2 && kw.includes(sw));
+                                    });
+                                }).length;
+                                
+                                if (matchScore > bestMatch.score) {
+                                    bestMatch = { score: matchScore, cluster: seed };
+                                }
+                            } catch (matchError) {
+                                console.warn('매칭 오류:', matchError);
+                            }
+                        });
+                        
+                        // 매칭되지 않으면 순환 배정
+                        if (bestMatch.score === 0) {
+                            const fallbackIndex = index % clusterSeeds.length;
+                            bestMatch.cluster = clusterSeeds[fallbackIndex];
+                        }
+                        
+                        // 클러스터에 추가
+                        let cluster = clusters.find(c => c.name === bestMatch.cluster.name);
+                        if (!cluster) {
+                            cluster = {
+                                name: bestMatch.cluster.name,
+                                color: bestMatch.cluster.color,
+                                members: [],
+                                keywords: []
+                            };
+                            clusters.push(cluster);
+                        }
+                        
+                        cluster.members.push(response);
+                        if (response.keywords) {
+                            cluster.keywords.push(...response.keywords);
+                        }
+                        totalAssigned++;
+                        
+                    } catch (responseError) {
+                        console.warn(`응답 ${index} 처리 오류:`, responseError);
+                    }
+                });
+                
+                console.log(`클러스터링 완료: ${totalAssigned}개 배정, ${clusters.length}개 클러스터`);
+                return clusters;
+                
+            } catch (error) {
+                console.error('클러스터링 오류:', error);
+                return [];
             }
         }
         
@@ -553,73 +731,91 @@
                 type: "center"
             });
             
-            // 각 클러스터당 정확히 3개 원형 생성 (빈도수 기반 TOP 3)
+            // 각 클러스터당 정확히 3개 원형 생성 (빈도수 기반 TOP 3) - 안전하게
             clusters.forEach((cluster, clusterIndex) => {
-                const clusterAngle = (360 / clusters.length) * clusterIndex;
-                
-                // 클러스터 내 C열 데이터 빈도수 계산
-                const contentFreq = {};
-                const contentAuthors = {}; // 각 내용별 작성자 목록
-                
-                cluster.members.forEach(member => {
-                    const content = member.cColumnData?.trim();
-                    if (content && content.length > 0) {
-                        contentFreq[content] = (contentFreq[content] || 0) + 1;
-                        if (!contentAuthors[content]) {
-                            contentAuthors[content] = [];
+                try {
+                    const clusterAngle = (360 / clusters.length) * clusterIndex;
+                    
+                    // 클러스터 내 C열 데이터 빈도수 계산 (안전하게)
+                    const contentFreq = {};
+                    const contentAuthors = {};
+                    
+                    if (cluster.members && Array.isArray(cluster.members)) {
+                        cluster.members.forEach((member, memberIndex) => {
+                            try {
+                                const content = member.cColumnData?.trim();
+                                const name = member.name?.trim() || `응답자${memberIndex + 1}`;
+                                
+                                if (content && content.length > 0 && content !== '내용 없음') {
+                                    contentFreq[content] = (contentFreq[content] || 0) + 1;
+                                    if (!contentAuthors[content]) {
+                                        contentAuthors[content] = [];
+                                    }
+                                    contentAuthors[content].push(name);
+                                }
+                            } catch (memberError) {
+                                console.warn('멤버 처리 오류:', memberError);
+                            }
+                        });
+                    }
+                    
+                    // 빈도수 기준 정렬하여 TOP 3 추출
+                    const topContents = Object.entries(contentFreq)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 3);
+                    
+                    // 클러스터당 3개 원형 생성 (TOP 1, 2, 3)
+                    for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
+                        try {
+                            const nodeAngle = clusterAngle + (nodeIndex - 1) * 25;
+                            const radius = baseRadius + (nodeIndex * 60);
+                            
+                            const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
+                            const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
+                            
+                            let displayText, tooltipContent;
+                            
+                            if (topContents[nodeIndex]) {
+                                const [content, frequency] = topContents[nodeIndex];
+                                const authors = contentAuthors[content] || [];
+                                
+                                // 첫 3어절만 표시 (안전하게)
+                                const words = content.split(' ').filter(w => w.trim()).slice(0, 3);
+                                displayText = words.length > 0 ? words.join(' ') : 
+                                            (content.length > 15 ? content.substring(0, 15) + '...' : content);
+                                
+                                // 작성자 목록 (최대 3명 + ...)
+                                const uniqueAuthors = [...new Set(authors)]; // 중복 제거
+                                const authorsList = uniqueAuthors.slice(0, 3).join(', ') + 
+                                                  (uniqueAuthors.length > 3 ? ' ...' : '');
+                                
+                                tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회`;
+                            } else {
+                                // TOP 3에 해당하는 데이터가 없는 경우
+                                displayText = `${cluster.name} ${nodeIndex + 1}`;
+                                tooltipContent = `${cluster.name} 클러스터\n순위 ${nodeIndex + 1} - 데이터 부족`;
+                            }
+                            
+                            coordinates.push({
+                                name: displayText,
+                                x: Math.max(50, Math.min(1350, x)),
+                                y: Math.max(50, Math.min(1150, y)),
+                                color: cluster.color,
+                                size: "medium",
+                                type: "person",
+                                cluster: cluster.name,
+                                keywords: (cluster.keywords || []).slice(0, 5).join(", "),
+                                summary: "",
+                                cColumnData: tooltipContent,
+                                nodeType: "frequency-based",
+                                rank: nodeIndex + 1
+                            });
+                        } catch (nodeError) {
+                            console.warn(`노드 ${nodeIndex} 생성 오류:`, nodeError);
                         }
-                        contentAuthors[content].push(member.name);
                     }
-                });
-                
-                // 빈도수 기준 정렬하여 TOP 3 추출
-                const topContents = Object.entries(contentFreq)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 3);
-                
-                // 클러스터당 3개 원형 생성 (TOP 1, 2, 3)
-                for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
-                    const nodeAngle = clusterAngle + (nodeIndex - 1) * 25; // -25, 0, +25도 간격
-                    const radius = baseRadius + (nodeIndex * 60); // 거리별 배치
-                    
-                    const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
-                    const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
-                    
-                    let displayText, tooltipContent;
-                    
-                    if (topContents[nodeIndex]) {
-                        const [content, frequency] = topContents[nodeIndex];
-                        const authors = contentAuthors[content] || [];
-                        
-                        // 첫 3어절만 표시
-                        const words = content.split(' ').slice(0, 3);
-                        displayText = words.join(' ') || content.substring(0, 15) + '...';
-                        
-                        // 작성자 목록 (최대 3명 + ...)
-                        const authorsList = authors.slice(0, 3).join(', ') + 
-                                          (authors.length > 3 ? ' ...' : '');
-                        
-                        tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회`;
-                    } else {
-                        // TOP 3에 해당하는 데이터가 없는 경우
-                        displayText = `${cluster.name} ${nodeIndex + 1}`;
-                        tooltipContent = `${cluster.name} 클러스터\n데이터 부족`;
-                    }
-                    
-                    coordinates.push({
-                        name: displayText,
-                        x: Math.max(50, Math.min(1350, x)),
-                        y: Math.max(50, Math.min(1150, y)),
-                        color: cluster.color,
-                        size: "medium",
-                        type: "person",
-                        cluster: cluster.name,
-                        keywords: cluster.keywords.slice(0, 5).join(", "),
-                        summary: "",
-                        cColumnData: tooltipContent,
-                        nodeType: "frequency-based",
-                        rank: nodeIndex + 1
-                    });
+                } catch (clusterError) {
+                    console.warn(`클러스터 ${clusterIndex} 처리 오류:`, clusterError);
                 }
             });
             
