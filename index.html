@@ -131,12 +131,20 @@
         }
         
         .person-node {
-            width: 80px;
-            height: 80px;
-            font-size: 11px;
+            width: 100px;
+            height: 100px;
+            font-size: 10px;
             color: white;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
             border: 3px solid rgba(255,255,255,0.3);
+            line-height: 1.2;
+            word-break: keep-all;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 5px;
         }
         
         .node-info {
@@ -531,8 +539,8 @@
         }
         
         function calculateAutoCoordinates(clusters) {
-            const centerX = 700, centerY = 600;  // 캔버스 정 가운데로 이동 (1400x1200 기준)
-            const baseRadius = 250;
+            const centerX = 700, centerY = 600;
+            const baseRadius = 280;
             const coordinates = [];
             
             // 중심점 - 캔버스 정 가운데 고정
@@ -545,30 +553,49 @@
                 type: "center"
             });
             
-            // 클러스터별 배치 - 더 넓은 영역 활용
+            // 각 클러스터당 정확히 3개 원형 생성
             clusters.forEach((cluster, clusterIndex) => {
                 const clusterAngle = (360 / clusters.length) * clusterIndex;
                 
-                cluster.members.forEach((member, memberIndex) => {
-                    const memberAngle = clusterAngle + (memberIndex * 20) - (cluster.members.length * 10);
-                    const radius = baseRadius + (Math.floor(memberIndex / 3) * 80);
+                // 클러스터당 3개 원형 생성
+                for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
+                    const nodeAngle = clusterAngle + (nodeIndex - 1) * 25; // -25, 0, +25도 간격
+                    const radius = baseRadius + (nodeIndex * 60); // 거리별 배치
                     
-                    const x = centerX + Math.cos(memberAngle * Math.PI / 180) * radius;
-                    const y = centerY + Math.sin(memberAngle * Math.PI / 180) * radius;
+                    const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
+                    const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
+                    
+                    // 해당 클러스터의 샘플 데이터 선택 (3개씩 순환)
+                    const sampleData = cluster.members[nodeIndex % cluster.members.length] || 
+                                     cluster.members[0] || 
+                                     { cColumnData: cluster.name };
+                    
+                    // 첫 번째 노드는 클러스터명, 나머지는 3어절 샘플
+                    let displayText, tooltipContent;
+                    if (nodeIndex === 0) {
+                        displayText = cluster.name;
+                        tooltipContent = `클러스터: ${cluster.name} (총 ${cluster.members.length}개 응답)`;
+                    } else {
+                        const sampleText = sampleData.cColumnData || cluster.name;
+                        const words = sampleText.split(' ').slice(0, 3); // 첫 3어절
+                        displayText = words.join(' ') || cluster.name;
+                        tooltipContent = sampleData.cColumnData || '데이터 없음';
+                    }
                     
                     coordinates.push({
-                        name: member.name,
-                        x: Math.max(50, Math.min(1350, x)),  // 캔버스 너비에 맞춰 조정
+                        name: displayText,
+                        x: Math.max(50, Math.min(1350, x)),
                         y: Math.max(50, Math.min(1150, y)),
                         color: cluster.color,
                         size: "medium",
                         type: "person",
                         cluster: cluster.name,
-                        keywords: member.keywords.join(", "),
-                        summary: member.summary,
-                        cColumnData: member.cColumnData  // C열 데이터 전달
+                        keywords: cluster.keywords.slice(0, 5).join(", "),
+                        summary: "",
+                        cColumnData: tooltipContent,
+                        nodeType: nodeIndex === 0 ? "cluster-label" : "sample-data"
                     });
-                });
+                }
             });
             
             return coordinates;
