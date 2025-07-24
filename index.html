@@ -169,7 +169,8 @@
         }
         
         .node:hover .node-info {
-            opacity: 1;
+            opacity: 1 !important;
+            transform: translateY(-50%) scale(1) !important;
         }
         
         .connection-line {
@@ -947,28 +948,34 @@
             const canvas = document.getElementById('topologyCanvas');
             canvas.innerHTML = '';
             
+            console.log('렌더링 시작 - 총 노드 수:', data.coordinates.length);
+            
             // 연결선 먼저 그리기
             const centerCoord = data.coordinates.find(c => c.type === 'center');
-            data.coordinates.filter(c => c.type === 'person').forEach(coord => {
-                const line = document.createElement('div');
-                line.className = 'connection-line';
-                
-                const dx = coord.x - centerCoord.x;
-                const dy = coord.y - centerCoord.y;
-                const length = Math.sqrt(dx * dx + dy * dy);
-                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-                
-                line.style.left = centerCoord.x + 'px';
-                line.style.top = centerCoord.y + 'px';
-                line.style.width = length + 'px';
-                line.style.transform = `rotate(${angle}deg)`;
-                line.style.zIndex = '1';
-                
-                canvas.appendChild(line);
-            });
+            if (centerCoord) {
+                data.coordinates.filter(c => c.type === 'person').forEach(coord => {
+                    const line = document.createElement('div');
+                    line.className = 'connection-line';
+                    
+                    const dx = coord.x - centerCoord.x;
+                    const dy = coord.y - centerCoord.y;
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                    
+                    line.style.left = centerCoord.x + 'px';
+                    line.style.top = centerCoord.y + 'px';
+                    line.style.width = length + 'px';
+                    line.style.transform = `rotate(${angle}deg)`;
+                    line.style.zIndex = '1';
+                    
+                    canvas.appendChild(line);
+                });
+            }
             
-            // 노드 그리기 - 순위 변동에 따른 동적 크기 적용
-            data.coordinates.forEach(coord => {
+            // 노드 그리기 - 모든 노드 확실히 렌더링
+            data.coordinates.forEach((coord, index) => {
+                console.log(`노드 ${index} 렌더링:`, coord.name, coord.type);
+                
                 const node = document.createElement('div');
                 node.className = `node ${coord.type === 'center' ? 'center-node' : 'person-node'} color-${coord.color}`;
                 
@@ -977,11 +984,16 @@
                 if (coord.type === 'center') {
                     baseSize = 120;
                     adjustedSize = baseSize;
+                    node.style.left = (coord.x - 60) + 'px';
+                    node.style.top = (coord.y - 60) + 'px';
                 } else {
                     baseSize = 100;
                     // sizeMultiplier를 적용 (순위 하락 시 0.8배)
                     const multiplier = coord.sizeMultiplier || 1.0;
                     adjustedSize = Math.round(baseSize * multiplier);
+                    
+                    node.style.left = (coord.x - 50) + 'px';
+                    node.style.top = (coord.y - 50) + 'px';
                     
                     // 크기 변경 애니메이션 추가
                     if (multiplier < 1.0) {
@@ -996,8 +1008,6 @@
                 
                 node.style.width = adjustedSize + 'px';
                 node.style.height = adjustedSize + 'px';
-                node.style.left = (coord.x - Math.round(adjustedSize / 2)) + 'px';
-                node.style.top = (coord.y - Math.round(adjustedSize / 2)) + 'px';
                 
                 // 순위 변동 표시를 위한 특별한 효과
                 if (coord.sizeMultiplier && coord.sizeMultiplier < 1.0) {
@@ -1011,46 +1021,26 @@
                     node.innerHTML = data.centerConcept;
                 } else {
                     // 원형 내부 텍스트
-                    const textSpan = document.createElement('span');
-                    textSpan.textContent = coord.name;
-                    textSpan.style.position = 'relative';
-                    textSpan.style.zIndex = '1';
-                    node.appendChild(textSpan);
-                    
+                    node.textContent = coord.name;
                     node.dataset.cluster = coord.cluster;
                     
-                    // 툴팁 정보 - 수정된 위치와 스타일
+                    // 툴팁 정보 - 마우스 이벤트와 함께
                     const info = document.createElement('div');
                     info.className = 'node-info';
                     info.innerHTML = `<strong>${coord.name}</strong><br><br>${coord.cColumnData || '데이터 없음'}`;
                     
-                    // 툴팁 위치 동적 조정
+                    // 툴팁 위치 설정
                     info.style.left = '120px';
                     info.style.top = '-30px';
-                    info.style.transform = 'translateY(-50%)';
                     
                     node.appendChild(info);
-                    
-                    // 마우스 이벤트 강화
-                    node.addEventListener('mouseenter', function() {
-                        const tooltip = this.querySelector('.node-info');
-                        if (tooltip) {
-                            tooltip.style.opacity = '1';
-                            tooltip.style.transform = 'translateY(-50%) scale(1)';
-                        }
-                    });
-                    
-                    node.addEventListener('mouseleave', function() {
-                        const tooltip = this.querySelector('.node-info');
-                        if (tooltip) {
-                            tooltip.style.opacity = '0';
-                            tooltip.style.transform = 'translateY(-50%) scale(0.95)';
-                        }
-                    });
                 }
                 
                 canvas.appendChild(node);
+                console.log(`노드 ${index} 추가 완료`);
             });
+            
+            console.log('렌더링 완료 - 캔버스 자식 수:', canvas.children.length);
             
             // 모든 클러스터를 기본적으로 보이게
             visibleClusters.clear();
