@@ -250,13 +250,20 @@
         .color-orange { background: #ff8844; }
         .color-pink { background: #ff44aa; }
         .color-cyan { background: #44aaff; }
+        
+        .loading {
+            text-align: center;
+            color: #007acc;
+            font-size: 18px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <div class="title">🧠 자동 토폴로지 마인드맵</div>
-            <div class="subtitle">CSV 데이터를 업로드하면 자동으로 시각화됩니다</div>
+            <div class="subtitle">북스터디 데이터가 자동으로 시각화됩니다</div>
         </div>
         
         <div class="stats" id="statsContainer">
@@ -279,21 +286,15 @@
         </div>
         
         <div class="control-panel">
-            <h3>📊 데이터 입력</h3>
+            <h3>📊 데이터 상태</h3>
             <div class="alert alert-info">
-                <strong>사용법:</strong> Google Sheets에서 CSV 다운로드 후 아래에 붙여넣기 → 자동 분석 버튼 클릭
+                <strong>자동 업데이트:</strong> 구글 스프레드시트에서 5분마다 자동 동기화됩니다
             </div>
             
-            <textarea id="csvInput" class="csv-input" placeholder="Google Sheets CSV 데이터를 여기에 붙여넣으세요...
-
-예시:
-타임스탬프,이름,키워드,요약,해석,연관개념,변화정도,그룹예상
-2024-01-24 10:00:00,김민준,환경 설계 신호,환경이 행동을 만든다,물리적 공간을 바꾸니...,디자인씽킹,크게 확장,"></textarea>
-            
             <div>
-                <button class="button button-success" onclick="autoAnalyze()">🚀 자동 분석 및 시각화</button>
-                <button class="button" onclick="loadSampleData()">📝 샘플 데이터 로드</button>
-                <button class="button button-danger" onclick="clearAll()">🗑️ 모두 지우기</button>
+                <button class="button button-success" onclick="loadAutoData()">🔄 최신 데이터 로드</button>
+                <button class="button" onclick="loadSampleData()">📝 샘플 데이터 보기</button>
+                <button class="button button-danger" onclick="clearAll()">🗑️ 화면 지우기</button>
                 <button class="button" onclick="exportImage()">📸 이미지 저장</button>
             </div>
         </div>
@@ -304,9 +305,9 @@
         </div>
         
         <div class="topology-canvas" id="topologyCanvas">
-            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #999;">
-                <h3>CSV 데이터를 업로드하고 '자동 분석 및 시각화' 버튼을 클릭하세요</h3>
-                <p>완전 자동화된 토폴로지 구조가 생성됩니다</p>
+            <div class="loading">
+                <h3>📡 북스터디 데이터를 불러오는 중...</h3>
+                <p>잠시만 기다려주세요</p>
             </div>
         </div>
     </div>
@@ -315,16 +316,32 @@
         let currentData = null;
         let visibleClusters = new Set();
         
-        function autoAnalyze() {
-            const csvInput = document.getElementById('csvInput').value.trim();
-            
-            if (!csvInput) {
-                alert('CSV 데이터를 입력해주세요.');
-                return;
-            }
-            
+        // 페이지 로드 시 자동으로 데이터 로드
+        window.addEventListener('DOMContentLoaded', function() {
+            loadAutoData();
+        });
+        
+        async function loadAutoData() {
             try {
-                const result = analyzeCSVData(csvInput);
+                showAlert('info', '최신 데이터를 불러오는 중...');
+                
+                // GitHub에서 book_study_data.txt 파일 읽기
+                const response = await fetch('./book_study_data.txt');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const csvData = await response.text();
+                
+                if (!csvData.trim()) {
+                    throw new Error('데이터 파일이 비어있습니다.');
+                }
+                
+                // TSV를 CSV로 변환 (탭을 쉼표로)
+                const csvConverted = csvData.replace(/\t/g, ',');
+                
+                // 데이터 분석 및 시각화
+                const result = analyzeCSVData(csvConverted);
                 renderTopologyVisualization(result);
                 updateStats(result);
                 setupClusterControls(result);
@@ -332,12 +349,12 @@
                 
                 document.getElementById('clusterControls').style.display = 'block';
                 
-                // 성공 알림
-                showAlert('success', `분석 완료! ${result.responses.length}개 응답, ${result.clusters.length}개 클러스터가 생성되었습니다.`);
+                showAlert('success', `자동 로드 완료! ${result.responses.length}개 응답, ${result.clusters.length}개 클러스터가 생성되었습니다.`);
                 
             } catch (error) {
-                showAlert('error', `분석 오류: ${error.message}`);
-                console.error(error);
+                console.error('데이터 로드 오류:', error);
+                showAlert('error', `데이터 로드 실패: ${error.message}. 샘플 데이터를 표시합니다.`);
+                loadSampleData();
             }
         }
         
@@ -348,7 +365,7 @@
             // CSV 파싱
             for (let i = 1; i < lines.length; i++) {
                 const values = parseCSVLine(lines[i]);
-                if (values.length >= 8 && values[1]) {
+                if (values.length >= 3 && values[1]) {
                     const response = {
                         name: values[1].replace(/"/g, ''),
                         keywords: values[2] ? values[2].replace(/"/g, '').split(/[,\s]+/).filter(k => k.trim()) : [],
@@ -376,7 +393,7 @@
             const keywordFreq = {};
             allKeywords.forEach(k => keywordFreq[k] = (keywordFreq[k] || 0) + 1);
             const centerConcept = Object.entries(keywordFreq)
-                .sort((a, b) => b[1] - a[1])[0]?.[0] || '중심개념';
+                .sort((a, b) => b[1] - a[1])[0]?.[0] || '북스터디';
             
             return {
                 responses,
@@ -667,16 +684,21 @@
 2024-01-24 13:00:00,최유진,"작은변화, 복리, 누적",1%의 개선이 37배 성장을 만든다,완벽하지 않아도 꾸준히 하는 게 중요,수학,확장,
 2024-01-24 14:00:00,정도현,"피드백, 측정, 추적",측정되지 않으면 개선되지 않는다,데이터로 현상을 파악해야 변화 가능,분석,새로운 관점,`;
             
-            document.getElementById('csvInput').value = sampleData;
-            autoAnalyze();
+            const result = analyzeCSVData(sampleData);
+            renderTopologyVisualization(result);
+            updateStats(result);
+            setupClusterControls(result);
+            currentData = result;
+            
+            document.getElementById('clusterControls').style.display = 'block';
+            showAlert('info', '샘플 데이터가 로드되었습니다.');
         }
         
         function clearAll() {
-            document.getElementById('csvInput').value = '';
             document.getElementById('topologyCanvas').innerHTML = `
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #999;">
-                    <h3>CSV 데이터를 업로드하고 '자동 분석 및 시각화' 버튼을 클릭하세요</h3>
-                    <p>완전 자동화된 토폴로지 구조가 생성됩니다</p>
+                <div class="loading">
+                    <h3>📡 북스터디 데이터를 불러오는 중...</h3>
+                    <p>잠시만 기다려주세요</p>
                 </div>
             `;
             document.getElementById('clusterControls').style.display = 'none';
@@ -696,7 +718,7 @@
         
         function showAlert(type, message) {
             const existingAlert = document.querySelector('.alert');
-            if (existingAlert) {
+            if (existingAlert && existingAlert.textContent !== existingAlert.querySelector('strong').textContent) {
                 existingAlert.remove();
             }
             
