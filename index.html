@@ -91,7 +91,7 @@
         }
         
         .topology-canvas {
-            background: white;
+            background: #f8fdf8;
             border-radius: 15px;
             padding: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
@@ -245,14 +245,42 @@
             color: #155724;
         }
         
-        .color-red { background: #ff4444; }
-        .color-yellow { background: #ffdd44; color: #333; text-shadow: none; }
-        .color-blue { background: #4488ff; }
-        .color-green { background: #44dd44; color: #333; text-shadow: none; }
-        .color-purple { background: #aa44ff; }
-        .color-orange { background: #ff8844; }
-        .color-pink { background: #ff44aa; }
-        .color-cyan { background: #44aaff; }
+        .color-red { 
+            background: linear-gradient(135deg, #ffb3b3 0%, #ff8080 100%);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-yellow { 
+            background: linear-gradient(135deg, #fff2b3 0%, #ffe680 100%);
+            color: #555; 
+            text-shadow: none;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-blue { 
+            background: linear-gradient(135deg, #b3d9ff 0%, #80c4ff 100%);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-green { 
+            background: linear-gradient(135deg, #b3f0b3 0%, #80e680 100%);
+            color: #333; 
+            text-shadow: none;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-purple { 
+            background: linear-gradient(135deg, #e6b3ff 0%, #d580ff 100%);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-orange { 
+            background: linear-gradient(135deg, #ffd9b3 0%, #ffbf80 100%);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-pink { 
+            background: linear-gradient(135deg, #ffb3e6 0%, #ff80d5 100%);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+        .color-cyan { 
+            background: linear-gradient(135deg, #b3f0ff 0%, #80e6ff 100%);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
         
         .loading {
             text-align: center;
@@ -365,7 +393,7 @@
             const lines = csvData.trim().split('\n');
             const responses = [];
             
-            // CSV 파싱 - C열(인덱스 2) 데이터 포함
+            // CSV 파싱 - C열(인덱스 2) 전체 데이터 보존
             for (let i = 1; i < lines.length; i++) {
                 const values = parseCSVLine(lines[i]);
                 if (values.length >= 3 && values[1]) {
@@ -374,9 +402,9 @@
                         keywords: values[2] ? values[2].replace(/"/g, '').split(/[,\s]+/).filter(k => k.trim()) : [],
                         summary: values[3] ? values[3].replace(/"/g, '') : '',
                         interpretation: values[4] ? values[4].replace(/"/g, '') : '',
-                        cColumnData: values[2] ? values[2].replace(/"/g, '') : ''  // C열 데이터 저장
+                        cColumnData: values[2] ? values[2].replace(/"/g, '').trim() : ''  // C열 전체 내용 보존
                     };
-                    if (response.keywords.length > 0) {
+                    if (response.cColumnData || response.keywords.length > 0) {  // C열 데이터가 있으면 포함
                         responses.push(response);
                     }
                 }
@@ -422,13 +450,13 @@
                 if (char === '"') {
                     inQuotes = !inQuotes;
                 } else if (char === ',' && !inQuotes) {
-                    result.push(current);
+                    result.push(current.trim());  // 공백 제거
                     current = '';
                 } else {
                     current += char;
                 }
             }
-            result.push(current);
+            result.push(current.trim());  // 마지막 항목도 공백 제거
             return result;
         }
         
