@@ -491,7 +491,92 @@
             }
         }
         
-        // 안전한 클러스터링 함수
+        // 이전 순위 데이터를 저장할 전역 변수
+        let previousRankings = {};
+        
+        // 순위 변동 감지 및 크기 조절을 위한 함수
+        function detectRankChanges(clusters) {
+            const currentRankings = {};
+            
+            clusters.forEach(cluster => {
+                // 현재 클러스터의 빈도수 기반 순위 계산
+                const contentFreq = {};
+                
+                if (cluster.members && Array.isArray(cluster.members)) {
+                    cluster.members.forEach(member => {
+                        const content = member.cColumnData?.trim();
+                        if (content && content.length > 0 && content !== '내용 없음') {
+                            contentFreq[content] = (contentFreq[content] || 0) + 1;
+                        }
+                    });
+                }
+                
+                // 빈도수 기준 정렬하여 현재 순위 생성
+                const sortedContents = Object.entries(contentFreq)
+                    .sort((a, b) => b[1] - a[1]);
+                
+                // 각 내용별 현재 순위 저장
+                sortedContents.forEach(([content, frequency], index) => {
+                    const key = `${cluster.name}:${content}`;
+                    currentRankings[key] = {
+                        rank: index + 1,
+                        frequency: frequency,
+                        cluster: cluster.name
+                    };
+                });
+            });
+            
+            // 순위 변동 계산
+            const rankChanges = {};
+            
+            Object.keys(currentRankings).forEach(key => {
+                const current = currentRankings[key];
+                const previous = previousRankings[key];
+                
+                if (previous) {
+                    // 이전 데이터가 있는 경우 순위 변동 계산
+                    if (current.rank > previous.rank) {
+                        // 순위가 떨어짐 (숫자가 커짐 = 순위 하락)
+                        rankChanges[key] = {
+                            type: 'down',
+                            previousRank: previous.rank,
+                            currentRank: current.rank,
+                            sizeMultiplier: 0.8 // -20% 크기
+                        };
+                    } else if (current.rank < previous.rank) {
+                        // 순위가 올라감
+                        rankChanges[key] = {
+                            type: 'up',
+                            previousRank: previous.rank,
+                            currentRank: current.rank,
+                            sizeMultiplier: 1.0 // 원래 크기 유지
+                        };
+                    } else {
+                        // 순위 동일
+                        rankChanges[key] = {
+                            type: 'same',
+                            previousRank: previous.rank,
+                            currentRank: current.rank,
+                            sizeMultiplier: 1.0 // 원래 크기 유지
+                        };
+                    }
+                } else {
+                    // 새로 등장한 내용
+                    rankChanges[key] = {
+                        type: 'new',
+                        previousRank: null,
+                        currentRank: current.rank,
+                        sizeMultiplier: 1.0 // 원래 크기
+                    };
+                }
+            });
+            
+            // 이전 순위 업데이트
+            previousRankings = { ...currentRankings };
+            
+            console.log('순위 변동 감지:', rankChanges);
+            return rankChanges;
+        }
         function performAutomaticClusteringSafely(responses) {
             try {
                 const clusterSeeds = [
@@ -721,6 +806,9 @@
             const baseRadius = 280;
             const coordinates = [];
             
+            // 순위 변동 감지
+            const rankChanges = detectRankChanges(clusters);
+            
             // 중심점 - 캔버스 정 가운데 고정
             coordinates.push({
                 name: "중심개념",
@@ -731,7 +819,7 @@
                 type: "center"
             });
             
-            // 각 클러스터당 정확히 3개 원형 생성 (빈도수 기반 TOP 3) - 안전하게
+            // 각 클러스터당 정확히 3개 원형 생성 (빈도수 기반 TOP 3) - 크기 동적 조절
             clusters.forEach((cluster, clusterIndex) => {
                 try {
                     const clusterAngle = (360 / clusters.length) * clusterIndex;
@@ -764,7 +852,7 @@
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 3);
                     
-                    // 클러스터당 3개 원형 생성 (TOP 1, 2, 3)
+                    // 클러스터당 3개 원형 생성 (TOP 1, 2, 3) - 순위 변동 반영
                     for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
                         try {
                             const nodeAngle = clusterAngle + (nodeIndex - 1) * 25;
@@ -773,23 +861,51 @@
                             const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
                             const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
                             
-                            let displayText, tooltipContent;
+                            let displayText, tooltipContent, sizeMultiplier = 1.0;
                             
                             if (topContents[nodeIndex]) {
                                 const [content, frequency] = topContents[nodeIndex];
                                 const authors = contentAuthors[content] || [];
                                 
-                                // 첫 3어절만 표시 (안전하게)
-                                const words = content.split(' ').filter(w => w.trim()).slice(0, 3);
-                                displayText = words.length > 0 ? words.join(' ') : 
-                                            (content.length > 15 ? content.substring(0, 15) + '...' : content);
-                                
-                                // 작성자 목록 (최대 3명 + ...)
-                                const uniqueAuthors = [...new Set(authors)]; // 중복 제거
-                                const authorsList = uniqueAuthors.slice(0, 3).join(', ') + 
-                                                  (uniqueAuthors.length > 3 ? ' ...' : '');
-                                
-                                tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회`;
+                                // 순위 변동에 따른 크기 조절
+                                const rankKey = `${cluster.name}:${content}`;
+                                if (rankChanges[rankKey]) {
+                                    sizeMultiplier = rankChanges[rankKey].sizeMultiplier;
+                                    
+                                    // 순위 변동 정보를 툴팁에 추가
+                                    const rankInfo = rankChanges[rankKey];
+                                    let rankChangeText = '';
+                                    if (rankInfo.type === 'down') {
+                                        rankChangeText = `\n📉 순위 변동: ${rankInfo.previousRank}등 → ${rankInfo.currentRank}등 (하락)`;
+                                    } else if (rankInfo.type === 'up') {
+                                        rankChangeText = `\n📈 순위 변동: ${rankInfo.previousRank}등 → ${rankInfo.currentRank}등 (상승)`;
+                                    } else if (rankInfo.type === 'new') {
+                                        rankChangeText = `\n🆕 신규 등장: ${rankInfo.currentRank}등`;
+                                    }
+                                    
+                                    // 첫 3어절만 표시 (안전하게)
+                                    const words = content.split(' ').filter(w => w.trim()).slice(0, 3);
+                                    displayText = words.length > 0 ? words.join(' ') : 
+                                                (content.length > 15 ? content.substring(0, 15) + '...' : content);
+                                    
+                                    // 작성자 목록 (최대 3명 + ...)
+                                    const uniqueAuthors = [...new Set(authors)]; // 중복 제거
+                                    const authorsList = uniqueAuthors.slice(0, 3).join(', ') + 
+                                                      (uniqueAuthors.length > 3 ? ' ...' : '');
+                                    
+                                    tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회${rankChangeText}`;
+                                } else {
+                                    // 순위 변동 정보가 없는 경우 (첫 로드)
+                                    const words = content.split(' ').filter(w => w.trim()).slice(0, 3);
+                                    displayText = words.length > 0 ? words.join(' ') : 
+                                                (content.length > 15 ? content.substring(0, 15) + '...' : content);
+                                    
+                                    const uniqueAuthors = [...new Set(authors)];
+                                    const authorsList = uniqueAuthors.slice(0, 3).join(', ') + 
+                                                      (uniqueAuthors.length > 3 ? ' ...' : '');
+                                    
+                                    tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회\n🔄 초기 데이터`;
+                                }
                             } else {
                                 // TOP 3에 해당하는 데이터가 없는 경우
                                 displayText = `${cluster.name} ${nodeIndex + 1}`;
@@ -808,7 +924,8 @@
                                 summary: "",
                                 cColumnData: tooltipContent,
                                 nodeType: "frequency-based",
-                                rank: nodeIndex + 1
+                                rank: nodeIndex + 1,
+                                sizeMultiplier: sizeMultiplier // 크기 조절 비율 추가
                             });
                         } catch (nodeError) {
                             console.warn(`노드 ${nodeIndex} 생성 오류:`, nodeError);
@@ -846,12 +963,45 @@
                 canvas.appendChild(line);
             });
             
-            // 노드 그리기
+            // 노드 그리기 - 순위 변동에 따른 동적 크기 적용
             data.coordinates.forEach(coord => {
                 const node = document.createElement('div');
                 node.className = `node ${coord.type === 'center' ? 'center-node' : 'person-node'} color-${coord.color}`;
-                node.style.left = (coord.x - (coord.type === 'center' ? 60 : 40)) + 'px';
-                node.style.top = (coord.y - (coord.type === 'center' ? 60 : 40)) + 'px';
+                
+                // 순위 변동에 따른 동적 크기 조절
+                let baseSize, adjustedSize;
+                if (coord.type === 'center') {
+                    baseSize = 120;
+                    adjustedSize = baseSize;
+                } else {
+                    baseSize = 100;
+                    // sizeMultiplier를 적용 (순위 하락 시 0.8배)
+                    const multiplier = coord.sizeMultiplier || 1.0;
+                    adjustedSize = Math.round(baseSize * multiplier);
+                    
+                    // 크기 변경 애니메이션 추가
+                    if (multiplier < 1.0) {
+                        node.style.transform = 'scale(1)';
+                        node.style.transition = 'all 0.8s ease-in-out';
+                        // 약간의 딜레이 후 크기 적용
+                        setTimeout(() => {
+                            node.style.transform = `scale(${multiplier})`;
+                        }, 100);
+                    }
+                }
+                
+                node.style.width = adjustedSize + 'px';
+                node.style.height = adjustedSize + 'px';
+                node.style.left = (coord.x - Math.round(adjustedSize / 2)) + 'px';
+                node.style.top = (coord.y - Math.round(adjustedSize / 2)) + 'px';
+                
+                // 순위 변동 표시를 위한 특별한 효과
+                if (coord.sizeMultiplier && coord.sizeMultiplier < 1.0) {
+                    node.style.opacity = '0.85'; // 약간 투명하게
+                    node.style.boxShadow = '0 2px 10px rgba(255, 0, 0, 0.3)'; // 빨간 그림자
+                } else if (coord.sizeMultiplier && coord.sizeMultiplier >= 1.0 && coord.rank) {
+                    node.style.boxShadow = '0 4px 15px rgba(0, 255, 0, 0.2)'; // 초록 그림자 (순위 상승/유지)
+                }
                 
                 if (coord.type === 'center') {
                     node.innerHTML = data.centerConcept;
