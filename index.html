@@ -553,11 +553,31 @@
                 type: "center"
             });
             
-            // 각 클러스터당 정확히 3개 원형 생성
+            // 각 클러스터당 정확히 3개 원형 생성 (빈도수 기반 TOP 3)
             clusters.forEach((cluster, clusterIndex) => {
                 const clusterAngle = (360 / clusters.length) * clusterIndex;
                 
-                // 클러스터당 3개 원형 생성
+                // 클러스터 내 C열 데이터 빈도수 계산
+                const contentFreq = {};
+                const contentAuthors = {}; // 각 내용별 작성자 목록
+                
+                cluster.members.forEach(member => {
+                    const content = member.cColumnData?.trim();
+                    if (content && content.length > 0) {
+                        contentFreq[content] = (contentFreq[content] || 0) + 1;
+                        if (!contentAuthors[content]) {
+                            contentAuthors[content] = [];
+                        }
+                        contentAuthors[content].push(member.name);
+                    }
+                });
+                
+                // 빈도수 기준 정렬하여 TOP 3 추출
+                const topContents = Object.entries(contentFreq)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3);
+                
+                // 클러스터당 3개 원형 생성 (TOP 1, 2, 3)
                 for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
                     const nodeAngle = clusterAngle + (nodeIndex - 1) * 25; // -25, 0, +25도 간격
                     const radius = baseRadius + (nodeIndex * 60); // 거리별 배치
@@ -565,21 +585,25 @@
                     const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
                     const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
                     
-                    // 해당 클러스터의 샘플 데이터 선택 (3개씩 순환)
-                    const sampleData = cluster.members[nodeIndex % cluster.members.length] || 
-                                     cluster.members[0] || 
-                                     { cColumnData: cluster.name };
-                    
-                    // 첫 번째 노드는 클러스터명, 나머지는 3어절 샘플
                     let displayText, tooltipContent;
-                    if (nodeIndex === 0) {
-                        displayText = cluster.name;
-                        tooltipContent = `클러스터: ${cluster.name} (총 ${cluster.members.length}개 응답)`;
+                    
+                    if (topContents[nodeIndex]) {
+                        const [content, frequency] = topContents[nodeIndex];
+                        const authors = contentAuthors[content] || [];
+                        
+                        // 첫 3어절만 표시
+                        const words = content.split(' ').slice(0, 3);
+                        displayText = words.join(' ') || content.substring(0, 15) + '...';
+                        
+                        // 작성자 목록 (최대 3명 + ...)
+                        const authorsList = authors.slice(0, 3).join(', ') + 
+                                          (authors.length > 3 ? ' ...' : '');
+                        
+                        tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회`;
                     } else {
-                        const sampleText = sampleData.cColumnData || cluster.name;
-                        const words = sampleText.split(' ').slice(0, 3); // 첫 3어절
-                        displayText = words.join(' ') || cluster.name;
-                        tooltipContent = sampleData.cColumnData || '데이터 없음';
+                        // TOP 3에 해당하는 데이터가 없는 경우
+                        displayText = `${cluster.name} ${nodeIndex + 1}`;
+                        tooltipContent = `${cluster.name} 클러스터\n데이터 부족`;
                     }
                     
                     coordinates.push({
@@ -593,7 +617,8 @@
                         keywords: cluster.keywords.slice(0, 5).join(", "),
                         summary: "",
                         cColumnData: tooltipContent,
-                        nodeType: nodeIndex === 0 ? "cluster-label" : "sample-data"
+                        nodeType: "frequency-based",
+                        rank: nodeIndex + 1
                     });
                 }
             });
@@ -638,15 +663,16 @@
                     node.innerHTML = coord.name;
                     node.dataset.cluster = coord.cluster;
                     
-                    // 툴팁 정보 - C열 데이터만 표시
+                    // 툴팁 정보 - 개선된 스타일
                     const info = document.createElement('div');
                     info.className = 'node-info';
+                    info.style.whiteSpace = 'pre-line'; // 줄바꿈 지원
                     info.innerHTML = `
-                        <strong>${coord.name}</strong><br>
+                        <strong>${coord.name}</strong><br><br>
                         ${coord.cColumnData || '데이터 없음'}
                     `;
-                    info.style.left = '90px';
-                    info.style.top = '-10px';
+                    info.style.left = '110px';
+                    info.style.top = '-20px';
                     node.appendChild(info);
                 }
                 
