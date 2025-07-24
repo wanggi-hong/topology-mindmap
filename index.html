@@ -150,7 +150,10 @@
             pointer-events: none;
             opacity: 0;
             transition: opacity 0.3s;
-            max-width: 200px;
+            max-width: 600px;
+            min-width: 300px;
+            white-space: normal;
+            word-wrap: break-word;
         }
         
         .node:hover .node-info {
@@ -362,7 +365,7 @@
             const lines = csvData.trim().split('\n');
             const responses = [];
             
-            // CSV 파싱
+            // CSV 파싱 - C열(인덱스 2) 데이터 포함
             for (let i = 1; i < lines.length; i++) {
                 const values = parseCSVLine(lines[i]);
                 if (values.length >= 3 && values[1]) {
@@ -370,7 +373,8 @@
                         name: values[1].replace(/"/g, ''),
                         keywords: values[2] ? values[2].replace(/"/g, '').split(/[,\s]+/).filter(k => k.trim()) : [],
                         summary: values[3] ? values[3].replace(/"/g, '') : '',
-                        interpretation: values[4] ? values[4].replace(/"/g, '') : ''
+                        interpretation: values[4] ? values[4].replace(/"/g, '') : '',
+                        cColumnData: values[2] ? values[2].replace(/"/g, '') : ''  // C열 데이터 저장
                     };
                     if (response.keywords.length > 0) {
                         responses.push(response);
@@ -399,7 +403,7 @@
                 responses,
                 clusters,
                 coordinates,
-                centerConcept,
+                centerConcept: '디지털웰빙',  // 중심 개념을 '디지털웰빙'으로 고정
                 stats: {
                     totalResponses: responses.length,
                     totalKeywords: Object.keys(keywordFreq).length,
@@ -499,11 +503,11 @@
         }
         
         function calculateAutoCoordinates(clusters) {
-            const centerX = 600, centerY = 500;  // Y 중심점을 아래로 이동
-            const baseRadius = 250;  // 반지름도 약간 증가
+            const centerX = 700, centerY = 600;  // 캔버스 정 가운데로 이동 (1400x1200 기준)
+            const baseRadius = 250;
             const coordinates = [];
             
-            // 중심점
+            // 중심점 - 캔버스 정 가운데 고정
             coordinates.push({
                 name: "중심개념",
                 x: centerX,
@@ -519,21 +523,22 @@
                 
                 cluster.members.forEach((member, memberIndex) => {
                     const memberAngle = clusterAngle + (memberIndex * 20) - (cluster.members.length * 10);
-                    const radius = baseRadius + (Math.floor(memberIndex / 3) * 80);  // 간격 증가
+                    const radius = baseRadius + (Math.floor(memberIndex / 3) * 80);
                     
                     const x = centerX + Math.cos(memberAngle * Math.PI / 180) * radius;
                     const y = centerY + Math.sin(memberAngle * Math.PI / 180) * radius;
                     
                     coordinates.push({
                         name: member.name,
-                        x: Math.max(50, Math.min(1150, x)),
-                        y: Math.max(50, Math.min(1150, y)),  // Y 범위 확장
+                        x: Math.max(50, Math.min(1350, x)),  // 캔버스 너비에 맞춰 조정
+                        y: Math.max(50, Math.min(1150, y)),
                         color: cluster.color,
                         size: "medium",
                         type: "person",
                         cluster: cluster.name,
                         keywords: member.keywords.join(", "),
-                        summary: member.summary
+                        summary: member.summary,
+                        cColumnData: member.cColumnData  // C열 데이터 전달
                     });
                 });
             });
@@ -578,14 +583,12 @@
                     node.innerHTML = coord.name;
                     node.dataset.cluster = coord.cluster;
                     
-                    // 툴팁 정보
+                    // 툴팁 정보 - C열 데이터만 표시
                     const info = document.createElement('div');
                     info.className = 'node-info';
                     info.innerHTML = `
                         <strong>${coord.name}</strong><br>
-                        클러스터: ${coord.cluster}<br>
-                        키워드: ${coord.keywords}<br>
-                        ${coord.summary ? `요약: ${coord.summary.substring(0, 50)}...` : ''}
+                        ${coord.cColumnData || '데이터 없음'}
                     `;
                     info.style.left = '90px';
                     info.style.top = '-10px';
