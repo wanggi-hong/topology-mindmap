@@ -462,29 +462,30 @@
         
         function performAutomaticClustering(responses) {
             const clusterSeeds = [
-                { name: "환경설계", keywords: ["환경", "설계", "공간", "배치", "신호", "트리거", "물리적"], color: "red" },
-                { name: "개인성장", keywords: ["정체성", "성장", "변화", "동기", "의지", "마음", "자아"], color: "yellow" },
-                { name: "시스템사고", keywords: ["시스템", "과정", "방법", "프로세스", "구조", "체계"], color: "blue" },
-                { name: "지속성", keywords: ["반복", "루틴", "자동화", "꾸준함", "지속", "일관성", "습관"], color: "green" },
-                { name: "사회적관계", keywords: ["관계", "공동체", "책임", "동료", "사회적", "협력"], color: "purple" },
-                { name: "점진적변화", keywords: ["작은", "복리", "누적", "단계", "점진적", "미세", "개선"], color: "orange" },
-                { name: "감정동기", keywords: ["감정", "느낌", "만족", "성취", "자신감", "동기부여"], color: "pink" },
-                { name: "실용적도구", keywords: ["도구", "기술", "앱", "알림", "실행", "계획", "관리"], color: "cyan" }
+                { name: "환경설계", keywords: ["물리적환경", "공간배치", "트리거설정", "환경디자인"], color: "red" },
+                { name: "개인성장", keywords: ["정체성", "자아개발", "마음가짐", "내적변화", "성장마인드"], color: "yellow" },
+                { name: "시스템사고", keywords: ["시스템", "프로세스", "체계적", "구조화", "방법론"], color: "blue" },
+                { name: "지속성", keywords: ["반복", "루틴", "꾸준함", "지속가능", "일관성", "습관화"], color: "green" },
+                { name: "사회적관계", keywords: ["관계", "공동체", "사회적책임", "동료", "협력", "네트워크"], color: "purple" },
+                { name: "점진적변화", keywords: ["작은변화", "복리효과", "누적", "단계적", "점진적개선"], color: "orange" },
+                { name: "감정동기", keywords: ["감정", "동기부여", "만족감", "성취감", "자신감"], color: "pink" },
+                { name: "실용적도구", keywords: ["도구", "기술활용", "앱", "디지털도구", "실행방법"], color: "cyan" }
             ];
             
             const clusters = [];
-            const assigned = new Set();
+            let totalAssigned = 0;
             
-            responses.forEach(person => {
-                if (assigned.has(person.name)) return;
-                
+            // 모든 응답을 순회하며 클러스터에 배정 (중복 제거 없음)
+            responses.forEach((response, index) => {
                 let bestMatch = { score: 0, cluster: null };
                 
+                // 더 엄격한 키워드 매칭
                 clusterSeeds.forEach(seed => {
-                    const matchScore = person.keywords.filter(keyword => 
+                    const matchScore = response.keywords.filter(keyword => 
                         seed.keywords.some(seedKeyword => 
-                            keyword.toLowerCase().includes(seedKeyword.toLowerCase()) || 
-                            seedKeyword.toLowerCase().includes(keyword.toLowerCase())
+                            keyword.toLowerCase() === seedKeyword.toLowerCase() ||
+                            (keyword.length > 3 && seedKeyword.toLowerCase().includes(keyword.toLowerCase())) ||
+                            (seedKeyword.length > 3 && keyword.toLowerCase().includes(seedKeyword.toLowerCase()))
                         )
                     ).length;
                     
@@ -493,19 +494,15 @@
                     }
                 });
                 
-                // 흰색/회색 클러스터 제거 - 매칭되지 않으면 가장 가까운 클러스터에 강제 배정
+                // 매칭되지 않으면 키워드 유사도 기반으로 배정
                 if (bestMatch.score === 0) {
-                    // 키워드 유사도 기반으로 가장 적합한 클러스터 찾기
                     let fallbackMatch = { score: 0, cluster: clusterSeeds[0] };
-                    clusterSeeds.forEach(seed => {
-                        const partialScore = person.keywords.filter(keyword => 
-                            seed.keywords.some(seedKeyword => 
-                                keyword.toLowerCase().includes(seedKeyword.toLowerCase().substring(0, 3)) || 
-                                seedKeyword.toLowerCase().includes(keyword.toLowerCase().substring(0, 3))
-                            )
-                        ).length;
-                        if (partialScore > fallbackMatch.score) {
-                            fallbackMatch = { score: partialScore, cluster: seed };
+                    clusterSeeds.forEach((seed, seedIndex) => {
+                        // 인덱스 기반 순환 배정으로 고른 분포
+                        const cyclicScore = (index + seedIndex) % clusterSeeds.length;
+                        if (cyclicScore > fallbackMatch.score || 
+                            (cyclicScore === fallbackMatch.score && Math.random() > 0.5)) {
+                            fallbackMatch = { score: cyclicScore, cluster: seed };
                         }
                     });
                     bestMatch.cluster = fallbackMatch.cluster;
@@ -522,10 +519,13 @@
                     clusters.push(cluster);
                 }
                 
-                cluster.members.push(person);
-                cluster.keywords.push(...person.keywords);
-                assigned.add(person.name);
+                cluster.members.push(response);
+                cluster.keywords.push(...response.keywords);
+                totalAssigned++;
             });
+            
+            console.log(`총 응답 수: ${responses.length}, 배정된 수: ${totalAssigned}`);
+            console.log('클러스터별 분포:', clusters.map(c => `${c.name}: ${c.members.length}`));
             
             return clusters;
         }
