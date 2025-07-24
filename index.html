@@ -96,7 +96,7 @@
             padding: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             position: relative;
-            height: 600px;
+            height: 1200px;
             overflow: hidden;
         }
         
@@ -461,8 +461,22 @@
                     }
                 });
                 
+                // 흰색/회색 클러스터 제거 - 매칭되지 않으면 가장 가까운 클러스터에 강제 배정
                 if (bestMatch.score === 0) {
-                    bestMatch.cluster = { name: "기타", color: "gray" };
+                    // 키워드 유사도 기반으로 가장 적합한 클러스터 찾기
+                    let fallbackMatch = { score: 0, cluster: clusterSeeds[0] };
+                    clusterSeeds.forEach(seed => {
+                        const partialScore = person.keywords.filter(keyword => 
+                            seed.keywords.some(seedKeyword => 
+                                keyword.toLowerCase().includes(seedKeyword.toLowerCase().substring(0, 3)) || 
+                                seedKeyword.toLowerCase().includes(keyword.toLowerCase().substring(0, 3))
+                            )
+                        ).length;
+                        if (partialScore > fallbackMatch.score) {
+                            fallbackMatch = { score: partialScore, cluster: seed };
+                        }
+                    });
+                    bestMatch.cluster = fallbackMatch.cluster;
                 }
                 
                 let cluster = clusters.find(c => c.name === bestMatch.cluster.name);
@@ -485,8 +499,8 @@
         }
         
         function calculateAutoCoordinates(clusters) {
-            const centerX = 600, centerY = 250;
-            const baseRadius = 200;
+            const centerX = 600, centerY = 500;  // Y 중심점을 아래로 이동
+            const baseRadius = 250;  // 반지름도 약간 증가
             const coordinates = [];
             
             // 중심점
@@ -499,13 +513,13 @@
                 type: "center"
             });
             
-            // 클러스터별 배치
+            // 클러스터별 배치 - 더 넓은 영역 활용
             clusters.forEach((cluster, clusterIndex) => {
                 const clusterAngle = (360 / clusters.length) * clusterIndex;
                 
                 cluster.members.forEach((member, memberIndex) => {
-                    const memberAngle = clusterAngle + (memberIndex * 25) - (cluster.members.length * 12.5);
-                    const radius = baseRadius + (Math.floor(memberIndex / 2) * 60);
+                    const memberAngle = clusterAngle + (memberIndex * 20) - (cluster.members.length * 10);
+                    const radius = baseRadius + (Math.floor(memberIndex / 3) * 80);  // 간격 증가
                     
                     const x = centerX + Math.cos(memberAngle * Math.PI / 180) * radius;
                     const y = centerY + Math.sin(memberAngle * Math.PI / 180) * radius;
@@ -513,7 +527,7 @@
                     coordinates.push({
                         name: member.name,
                         x: Math.max(50, Math.min(1150, x)),
-                        y: Math.max(50, Math.min(450, y)),
+                        y: Math.max(50, Math.min(1150, y)),  // Y 범위 확장
                         color: cluster.color,
                         size: "medium",
                         type: "person",
