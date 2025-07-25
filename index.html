@@ -1,4 +1,321 @@
-<!DOCTYPE html>
+setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
+        
+        // 🚀 물리 엔진 시작!
+        function startPhysicsSimulation() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            isPhysicsEnabled = true;
+            console.log('🌟 물리 시뮬레이션 시작!');
+            
+            // 초기 물고기 떼 효과 - 중앙에서 퍼져나가기
+            setTimeout(() => {
+                physicsNodes.forEach(node => {
+                    if (!node.isCenter) {
+                        // 중앙으로 모든 노드 이동 (물고기 떼 시작)
+                        node.x = 700 + (Math.random() - 0.5) * 100;
+                        node.y = 600 + (Math.random() - 0.5) * 100;
+                        // 랜덤한 초기 속도
+                        node.vx = (Math.random() - 0.5) * 10;
+                        node.vy = (Math.random() - 0.5) * 10;
+                    }
+                });
+                physicsLoop();
+            }, 500);
+        }
+        
+        // 🐟 메인 물리 루프
+        function physicsLoop() {
+            if (!isPhysicsEnabled) return;
+            
+            // 물리 계산
+            updatePhysics();
+            
+            // DOM 업데이트
+            updateDOM();
+            
+            // 연결선 업데이트
+            updateConnections();
+            
+            // 다음 프레임 요청
+            animationId = requestAnimationFrame(physicsLoop);
+        }
+        
+        // ⚡ 물리 계산 함수
+        function updatePhysics() {
+            const centerNode = physicsNodes.find(n => n.isCenter);
+            const damping = 0.95; // 마찰력
+            const dt = 0.016; // 60fps 기준
+            
+            physicsNodes.forEach((node, i) => {
+                if (node.isCenter) {
+                    // 🍩 중심 노드는 도넛 자석 안에서만 움직임
+                    const donutRadius = 80;
+                    const distFromCenter = Math.sqrt(node.vx * node.vx + node.vy * node.vy);
+                    
+                    if (distFromCenter > 0.1) {
+                        // 중심으로 돌아가려는 힘
+                        const restoreForce = 0.3;
+                        node.vx += -node.vx * restoreForce * dt;
+                        node.vy += -node.vy * restoreForce * dt;
+                    }
+                    
+                    // 위치 업데이트
+                    node.x += node.vx * dt;
+                    node.y += node.vy * dt;
+                    
+                    // 도넛 영역 제한
+                    const offsetX = node.x - 700;
+                    const offsetY = node.y - 600;
+                    const dist = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+                    
+                    if (dist > donutRadius) {
+                        const angle = Math.atan2(offsetY, offsetX);
+                        node.x = 700 + Math.cos(angle) * donutRadius;
+                        node.y = 600 + Math.sin(angle) * donutRadius;
+                        node.vx *= -0.5;
+                        node.vy *= -0.5;
+                    }
+                    
+                } else {
+                    // 🐟 일반 노드들의 물고기 물리학
+                    
+                    // 1. 중심에 대한 스프링 힘
+                    const dx = centerNode.x - node.x;
+                    const dy = centerNode.y - node.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const targetDist = node.targetRadius || 300;
+                    
+                    if (dist > 0) {
+                        const springForce = 0.02;
+                        const force = (dist - targetDist) * springForce;
+                        node.vx += (dx / dist) * force * dt;
+                        node.vy += (dy / dist) * force * dt;
+                    }
+                    
+                    // 2. 다른 노드들과의 충돌 방지 (물고기 떼 효과)
+                    physicsNodes.forEach((other, j) => {
+                        if (i !== j && !other.isCenter) {
+                            const dx2 = other.x - node.x;
+                            const dy2 = other.y - node.y;
+                            const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                            const minDist = (node.size + other.size) * 0.8;
+                            
+                            if (dist2 < minDist && dist2 > 0) {
+                                // 밀어내는 힘
+                                const pushForce = 0.5;
+                                const force = (minDist - dist2) * pushForce;
+                                node.vx -= (dx2 / dist2) * force * dt;
+                                node.vy -= (dy2 / dist2) * force * dt;
+                            }
+                        }
+                    });
+                    
+                    // 3. 경계 반발
+                    const margin = 50;
+                    if (node.x < margin) {
+                        node.vx += (margin - node.x) * 0.01;
+                    }
+                    if (node.x > 1350) {
+                        node.vx += (1350 - node.x) * 0.01;
+                    }
+                    if (node.y < margin) {
+                        node.vy += (margin - node.y) * 0.01;
+                    }
+                    if (node.y > 1150) {
+                        node.vy += (1150 - node.y) * 0.01;
+                    }
+                    
+                    // 위치 업데이트
+                    node.x += node.vx * dt;
+                    node.y += node.vy * dt;
+                    
+                    // 마찰 적용
+                    node.vx *= damping;
+                    node.vy *= damping;
+                }
+            });
+        }
+        
+        // 🎨 DOM 위치 업데이트
+        function updateDOM() {
+            physicsNodes.forEach(node => {
+                if (node.domElement) {
+                    const halfSize = node.size / 2;
+                    node.domElement.style.left = (node.x - halfSize) + 'px';
+                    node.domElement.style.top = (node.y - halfSize) + 'px';
+                }
+            });
+        }
+        
+        // 🔗 연결선 업데이트  
+        function updateConnections() {
+            const centerNode = physicsNodes.find(n => n.isCenter);
+            
+            physicsNodes.forEach((node, index) => {
+                if (!node.isCenter) {
+                    const lineElement = document.getElementById(`line-${index}`);
+                    if (lineElement && centerNode) {
+                        const dx = node.x - centerNode.x;
+                        const dy = node.y - centerNode.y;
+                        const length = Math.sqrt(dx * dx + dy * dy);
+                        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                        
+                        lineElement.style.left = centerNode.x + 'px';
+                        lineElement.style.top = centerNode.y + 'px';
+                        lineElement.style.width = length + 'px';
+                        lineElement.style.transform = `rotate(${angle}deg)`;
+                        lineElement.style.zIndex = '1';
+                    }
+                }
+            });
+        }
+        
+        // 🛑 물리 시뮬레이션 정지
+        function stopPhysicsSimulation() {
+            isPhysicsEnabled = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            console.log('🛑 물리 시뮬레이션 정지');
+        }
+        
+        // 🎛️ 물리 엔진 토글
+        function togglePhysics() {
+            const button = document.getElementById('physicsToggle');
+            
+            if (isPhysicsEnabled) {
+                stopPhysicsSimulation();
+                button.textContent = '🐟 물리 OFF';
+                button.style.background = '#6c757d';
+                showAlert('info', '물리 시뮬레이션이 정지되었습니다.');
+            } else {
+                if (physicsNodes.length > 0) {
+                    startPhysicsSimulation();
+                    button.textContent = '🐟 물리 ON';
+                    button.style.background = '#28a745';
+                    showAlert('success', '🌟 물고기 떼 시뮬레이션 시작! 노드들이 유기적으로 움직입니다.');
+                } else {
+                    showAlert('error', '먼저 데이터를 로드해주세요.');
+                }
+            }
+        }
+        
+        // 🚀 물리 엔진 시작!
+        function startPhysicsSimulation() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            isPhysicsEnabled = true;
+            console.log('🌟 물리 시뮬레이션 시작!');
+            
+            // 초기 물고기 떼 효과 - 중앙에서 퍼져나가기
+            setTimeout(() => {
+                physicsNodes.forEach(node => {
+                    if (!node.isCenter) {
+                        // 중앙으로 모든 노드 이동 (물고기 떼 시작)
+                        node.x = 700 + (Math.random() - 0.5) * 100;
+                        node.y = 600 + (Math.random() - 0.5) * 100;
+                        // 랜덤한 초기 속도
+                        node.vx = (Math.random() - 0.5) * 10;
+                        node.vy = (Math.random() - 0.5) * 10;
+                    }
+                });
+                physicsLoop();
+            }, 500);
+        }
+        
+        // 🐟 메인 물리 루프
+        function physicsLoop() {
+            if (!isPhysicsEnabled) return;
+            
+            // 물리 계산
+            updatePhysics();
+            
+            // DOM 업데이트
+            updateDOM();
+            
+            // 연결선 업데이트
+            updateConnections();
+            
+            // 다음 프레임 요청
+            animationId = requestAnimationFrame(physicsLoop);
+        }
+        
+        // ⚡ 물리 계산 함수
+        function updatePhysics() {
+            const centerNode = physicsNodes.find(n => n.isCenter);
+            const damping = 0.95; // 마찰력
+            const dt = 0.016; // 60fps 기준
+            
+            physicsNodes.forEach((node, i) => {
+                if (node.isCenter) {
+                    // 🍩 중심 노드는 도넛 자석 안에서만 움직임
+                    const donutRadius = 80;
+                    const distFromCenter = Math.sqrt(node.vx * node.vx + node.vy * node.vy);
+                    
+                    if (distFromCenter > 0.1) {
+                        // 중심으로 돌아가려는 힘
+                        const restoreForce = 0.3;
+                        node.vx += -node.vx * restoreForce * dt;
+                        node.vy += -node.vy * restoreForce * dt;
+                    }
+                    
+                    // 위치 업데이트
+                    node.x += node.vx * dt;
+                    node.y += node.vy * dt;
+                    
+                    // 도넛 영역 제한
+                    const offsetX = node.x - 700;
+                    const offsetY = node.y - 600;
+                    const dist = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+                    
+                    if (dist > donutRadius) {
+                        const angle = Math.atan2(offsetY, offsetX);
+                        node.x = 700 + Math.cos(angle) * donutRadius;
+                        node.y = 600 + Math.sin(angle) * donutRadius;
+                        node.vx *= -0.5;
+                        node.vy *= -0.5;
+                    }
+                    
+                } else {
+                    // 🐟 일반 노드들의 물고기 물리학
+                    
+                    // 1. 중심에 대한 스프링 힘
+                    const dx = centerNode.x - node.x;
+                    const dy = centerNode.y - node.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const targetDist = node.targetRadius || 300;
+                    
+                    if (dist > 0) {
+                        const springForce = 0.02;
+                        const force = (dist - targetDist) * springForce;
+                        node.vx += (dx / dist) * force * dt;
+                        node.vy += (dy / dist) * force * dt;
+                    }
+                    
+                    // 2. 다른 노드들과의 충돌 방지 (물고기 떼 효과)
+                    physicsNodes.forEach((other, j) => {
+                        if (i !== j && !other.isCenter) {
+                            const dx2 = other.x - node.x;
+                            const dy2 = other.y - node.y;
+                            const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                            const minDist = (node.size + other.size) * 0.8;
+                            
+                            if (dist2 < minDist && dist2 > 0) {
+                                // 밀어내는 힘
+                                const pushForce = 0.5;
+                                const force = (minDist - dist2) * pushForce;
+                                node.vx -= (dx2 / dist2) * force * dt;
+                                node.vy -= (<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -333,6 +650,7 @@
             <div>
                 <button class="button button-success" onclick="loadAutoData()">🔄 최신 데이터 로드</button>
                 <button class="button" onclick="loadSampleData()">📝 샘플 데이터 보기</button>
+                <button class="button" onclick="togglePhysics()" id="physicsToggle">🐟 물리 ON</button>
                 <button class="button button-danger" onclick="clearAll()">🗑️ 화면 지우기</button>
                 <button class="button" onclick="exportImage()">📸 이미지 저장</button>
             </div>
@@ -354,6 +672,11 @@
     <script>
         let currentData = null;
         let visibleClusters = new Set();
+        
+        // 🚀 물리 엔진 변수들
+        let physicsNodes = [];
+        let animationId = null;
+        let isPhysicsEnabled = false;
         
         // 페이지 로드 시 자동으로 데이터 로드
         window.addEventListener('DOMContentLoaded', function() {
@@ -809,22 +1132,27 @@
             // 순위 변동 감지
             const rankChanges = detectRankChanges(clusters);
             
-            // 중심점 - 캔버스 정 가운데 고정
+            // 🌟 중심점 - 물리 엔진 준비
             coordinates.push({
                 name: "중심개념",
                 x: centerX,
                 y: centerY,
                 color: "black",
                 size: "large",
-                type: "center"
+                type: "center",
+                // 🚀 물리 속성 추가
+                vx: 0, vy: 0, // 속도
+                mass: 10,     // 질량 (무거움 = 안정적)
+                isCenter: true
             });
             
-            // 각 클러스터당 정확히 3개 원형 생성 (빈도수 기반 TOP 3) - 크기 동적 조절
+            // 🌟 물리 기반 클러스터 노드 생성
             clusters.forEach((cluster, clusterIndex) => {
                 try {
+                    // 초기 각도 (균등 분포)
                     const clusterAngle = (360 / clusters.length) * clusterIndex;
                     
-                    // 클러스터 내 C열 데이터 빈도수 계산 (안전하게)
+                    // 클러스터 내 C열 데이터 빈도수 계산
                     const contentFreq = {};
                     const contentAuthors = {};
                     
@@ -847,18 +1175,17 @@
                         });
                     }
                     
-                    // 빈도수 기준 정렬하여 TOP 3 추출
                     const topContents = Object.entries(contentFreq)
                         .sort((a, b) => b[1] - a[1])
                         .slice(0, 3);
                     
-                    // 클러스터당 3개 원형 생성 (TOP 1, 2, 3) - 순위 변동 반영
+                    // 🚀 클러스터당 3개 물리 노드 생성
                     for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
                         try {
                             const nodeAngle = clusterAngle + (nodeIndex - 1) * 25;
-                            // 3위는 더 멀리 배치 (280 → 340 → 480)
                             const radius = baseRadius + (nodeIndex === 2 ? 200 : nodeIndex * 60);
                             
+                            // 초기 위치 (기존과 동일하게 시작)
                             const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
                             const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
                             
@@ -867,13 +1194,10 @@
                             if (topContents[nodeIndex]) {
                                 const [content, frequency] = topContents[nodeIndex];
                                 const authors = contentAuthors[content] || [];
-                                
-                                // 순위 변동에 따른 크기 조절
                                 const rankKey = `${cluster.name}:${content}`;
+                                
                                 if (rankChanges[rankKey]) {
                                     sizeMultiplier = rankChanges[rankKey].sizeMultiplier;
-                                    
-                                    // 순위 변동 정보를 툴팁에 추가
                                     const rankInfo = rankChanges[rankKey];
                                     let rankChangeText = '';
                                     if (rankInfo.type === 'down') {
@@ -884,19 +1208,16 @@
                                         rankChangeText = `\n🆕 신규 등장: ${rankInfo.currentRank}등`;
                                     }
                                     
-                                    // 첫 3어절만 표시 (안전하게)
                                     const words = content.split(' ').filter(w => w.trim()).slice(0, 3);
                                     displayText = words.length > 0 ? words.join(' ') : 
                                                 (content.length > 15 ? content.substring(0, 15) + '...' : content);
                                     
-                                    // 작성자 목록 (최대 3명 + ...)
-                                    const uniqueAuthors = [...new Set(authors)]; // 중복 제거
+                                    const uniqueAuthors = [...new Set(authors)];
                                     const authorsList = uniqueAuthors.slice(0, 3).join(', ') + 
                                                       (uniqueAuthors.length > 3 ? ' ...' : '');
                                     
                                     tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회${rankChangeText}`;
                                 } else {
-                                    // 순위 변동 정보가 없는 경우 (첫 로드)
                                     const words = content.split(' ').filter(w => w.trim()).slice(0, 3);
                                     displayText = words.length > 0 ? words.join(' ') : 
                                                 (content.length > 15 ? content.substring(0, 15) + '...' : content);
@@ -908,7 +1229,6 @@
                                     tooltipContent = `${content}\n\n작성자: ${authorsList}\n빈도: ${frequency}회\n🔄 초기 데이터`;
                                 }
                             } else {
-                                // TOP 3에 해당하는 데이터가 없는 경우
                                 displayText = `${cluster.name} ${nodeIndex + 1}`;
                                 tooltipContent = `${cluster.name} 클러스터\n순위 ${nodeIndex + 1} - 데이터 부족`;
                             }
@@ -926,7 +1246,14 @@
                                 cColumnData: tooltipContent,
                                 nodeType: "frequency-based",
                                 rank: nodeIndex + 1,
-                                sizeMultiplier: sizeMultiplier // 크기 조절 비율 추가
+                                sizeMultiplier: sizeMultiplier,
+                                // 🚀 물리 속성 추가
+                                vx: 0, vy: 0,           // 속도
+                                mass: 3 - nodeIndex,    // 1위=3, 2위=2, 3위=1 (순위 높을수록 무거움)
+                                parentCluster: clusterIndex,
+                                nodeIndex: nodeIndex,
+                                targetRadius: radius,   // 목표 거리
+                                isCenter: false
                             });
                         } catch (nodeError) {
                             console.warn(`노드 ${nodeIndex} 생성 오류:`, nodeError);
@@ -944,65 +1271,42 @@
             const canvas = document.getElementById('topologyCanvas');
             canvas.innerHTML = '';
             
-            // 연결선 먼저 그리기
-            const centerCoord = data.coordinates.find(c => c.type === 'center');
-            data.coordinates.filter(c => c.type === 'person').forEach(coord => {
+            // 🚀 물리 노드 초기화
+            physicsNodes = [...data.coordinates];
+            
+            // 연결선 먼저 그리기 (동적으로 업데이트될 예정)
+            const centerCoord = physicsNodes.find(c => c.type === 'center');
+            physicsNodes.filter(c => c.type === 'person').forEach(coord => {
                 const line = document.createElement('div');
                 line.className = 'connection-line';
-                
-                const dx = coord.x - centerCoord.x;
-                const dy = coord.y - centerCoord.y;
-                const length = Math.sqrt(dx * dx + dy * dy);
-                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-                
-                line.style.left = centerCoord.x + 'px';
-                line.style.top = centerCoord.y + 'px';
-                line.style.width = length + 'px';
-                line.style.transform = `rotate(${angle}deg)`;
-                line.style.zIndex = '1';
-                
+                line.id = `line-${physicsNodes.indexOf(coord)}`;
                 canvas.appendChild(line);
             });
             
-            // 노드 그리기 - 순위 변동에 따른 동적 크기 적용
-            data.coordinates.forEach(coord => {
+            // 🌟 노드 그리기 - 물리 엔진 준비
+            physicsNodes.forEach((coord, index) => {
                 const node = document.createElement('div');
                 node.className = `node ${coord.type === 'center' ? 'center-node' : 'person-node'} color-${coord.color}`;
+                node.id = `node-${index}`;
                 
-                // 순위 변동에 따른 동적 크기 조절
+                // 크기 설정
                 let baseSize, adjustedSize;
                 if (coord.type === 'center') {
                     baseSize = 120;
                     adjustedSize = baseSize;
                 } else {
                     baseSize = 100;
-                    // sizeMultiplier를 적용 (순위 하락 시 0.8배)
                     const multiplier = coord.sizeMultiplier || 1.0;
                     adjustedSize = Math.round(baseSize * multiplier);
-                    
-                    // 크기 변경 애니메이션 추가
-                    if (multiplier < 1.0) {
-                        node.style.transform = 'scale(1)';
-                        node.style.transition = 'all 0.8s ease-in-out';
-                        // 약간의 딜레이 후 크기 적용
-                        setTimeout(() => {
-                            node.style.transform = `scale(${multiplier})`;
-                        }, 100);
-                    }
                 }
                 
                 node.style.width = adjustedSize + 'px';
                 node.style.height = adjustedSize + 'px';
+                
+                // 🚀 초기 위치 설정 (물리 엔진이 곧 관리할 예정)
                 node.style.left = (coord.x - Math.round(adjustedSize / 2)) + 'px';
                 node.style.top = (coord.y - Math.round(adjustedSize / 2)) + 'px';
-                
-                // 순위 변동 표시를 위한 특별한 효과
-                if (coord.sizeMultiplier && coord.sizeMultiplier < 1.0) {
-                    node.style.opacity = '0.85'; // 약간 투명하게
-                    node.style.boxShadow = '0 2px 10px rgba(255, 0, 0, 0.3)'; // 빨간 그림자
-                } else if (coord.sizeMultiplier && coord.sizeMultiplier >= 1.0 && coord.rank) {
-                    node.style.boxShadow = '0 4px 15px rgba(0, 255, 0, 0.2)'; // 초록 그림자 (순위 상승/유지)
-                }
+                node.style.position = 'absolute';
                 
                 if (coord.type === 'center') {
                     node.innerHTML = data.centerConcept;
@@ -1010,10 +1314,10 @@
                     node.innerHTML = coord.name;
                     node.dataset.cluster = coord.cluster;
                     
-                    // 툴팁 정보 - 개선된 스타일
+                    // 툴팁 정보
                     const info = document.createElement('div');
                     info.className = 'node-info';
-                    info.style.whiteSpace = 'pre-line'; // 줄바꿈 지원
+                    info.style.whiteSpace = 'pre-line';
                     info.innerHTML = `
                         <strong>${coord.name}</strong><br><br>
                         ${coord.cColumnData || '데이터 없음'}
@@ -1024,7 +1328,14 @@
                 }
                 
                 canvas.appendChild(node);
+                
+                // 🚀 DOM 요소를 물리 노드에 연결
+                coord.domElement = node;
+                coord.size = adjustedSize;
             });
+            
+            // 🌟 물리 시뮬레이션 시작!
+            startPhysicsSimulation();
             
             // 모든 클러스터를 기본적으로 보이게
             visibleClusters.clear();
