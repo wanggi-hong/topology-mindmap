@@ -345,14 +345,7 @@
         let visibleClusters = new Set();
         let physicsNodes = [];
         let magneticStones = []; // 🪨 보이지 않는 자석 돌들
-        let virtualWalls = []; // 🧱 BRIO 미로 벽들
-        let globalResistanceTimer = { // 🕐 글로벌 저항 타이머
-            startTime: 0,
-            lastCycleTime: 0,
-            isReturnMode: false,
-            cycleDuration: 4000, // 4초 주기
-            returnDuration: 1500  // 1.5초간 귀환모드
-        };
+        let lastSnapTime = 0; // ⚡ 마지막 반짝 귀환 시간
         let animationId = null;
         let isPhysicsEnabled = false;
         let previousRankings = {};
@@ -839,32 +832,7 @@
                 }
             });
             
-            // 🧱 BRIO 미로 가상벽 생성 (랜덤 배치)
-            virtualWalls = [];
-            for (let i = 0; i < 15; i++) { // 15개의 랜덤 벽
-                virtualWalls.push({
-                    x1: Math.random() * 1200 + 100,
-                    y1: Math.random() * 1000 + 100,
-                    x2: Math.random() * 1200 + 100,
-                    y2: Math.random() * 1000 + 100,
-                    thickness: 30, // 벽 두께
-                    isActive: false,
-                    activationTime: 0,
-                    resistance: 0,
-                    affectedNodes: new Set()
-                });
-            }
-            
-            // 🐟 각 물고기에 벽 충돌 상태 추가
-            physicsNodes.forEach(node => {
-                if (!node.isCenter) {
-                    node.wallCollisions = new Map(); // 벽별 충돌 상태
-                    node.lastWallCheck = 0;
-                }
-            });
-            
             console.log(`🪨 ${magneticStones.length}개의 자석 돌 생성됨`);
-            console.log(`🧱 ${virtualWalls.length}개의 가상 벽 생성됨`);
             
             // 연결선 먼저 그리기
             const centerCoord = physicsNodes.find(c => c.type === 'center');
