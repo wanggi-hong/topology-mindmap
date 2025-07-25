@@ -856,7 +856,8 @@
                     for (let nodeIndex = 0; nodeIndex < 3; nodeIndex++) {
                         try {
                             const nodeAngle = clusterAngle + (nodeIndex - 1) * 25;
-                            const radius = baseRadius + (nodeIndex * 60);
+                            // 3위는 더 멀리 배치 (280 → 340 → 480)
+                            const radius = baseRadius + (nodeIndex === 2 ? 200 : nodeIndex * 60);
                             
                             const x = centerX + Math.cos(nodeAngle * Math.PI / 180) * radius;
                             const y = centerY + Math.sin(nodeAngle * Math.PI / 180) * radius;
