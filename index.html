@@ -346,6 +346,13 @@
         let physicsNodes = [];
         let magneticStones = []; // 🪨 보이지 않는 자석 돌들
         let virtualWalls = []; // 🧱 BRIO 미로 벽들
+        let globalResistanceTimer = { // 🕐 글로벌 저항 타이머
+            startTime: 0,
+            lastCycleTime: 0,
+            isReturnMode: false,
+            cycleDuration: 4000, // 4초 주기
+            returnDuration: 1500  // 1.5초간 귀환모드
+        };
         let animationId = null;
         let isPhysicsEnabled = false;
         let previousRankings = {};
