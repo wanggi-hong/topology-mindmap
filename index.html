@@ -345,6 +345,7 @@
         let visibleClusters = new Set();
         let physicsNodes = [];
         let magneticStones = []; // 🪨 보이지 않는 자석 돌들
+        let virtualWalls = []; // 🧱 BRIO 미로 벽들
         let animationId = null;
         let isPhysicsEnabled = false;
         let previousRankings = {};
@@ -831,7 +832,32 @@
                 }
             });
             
+            // 🧱 BRIO 미로 가상벽 생성 (랜덤 배치)
+            virtualWalls = [];
+            for (let i = 0; i < 15; i++) { // 15개의 랜덤 벽
+                virtualWalls.push({
+                    x1: Math.random() * 1200 + 100,
+                    y1: Math.random() * 1000 + 100,
+                    x2: Math.random() * 1200 + 100,
+                    y2: Math.random() * 1000 + 100,
+                    thickness: 30, // 벽 두께
+                    isActive: false,
+                    activationTime: 0,
+                    resistance: 0,
+                    affectedNodes: new Set()
+                });
+            }
+            
+            // 🐟 각 물고기에 벽 충돌 상태 추가
+            physicsNodes.forEach(node => {
+                if (!node.isCenter) {
+                    node.wallCollisions = new Map(); // 벽별 충돌 상태
+                    node.lastWallCheck = 0;
+                }
+            });
+            
             console.log(`🪨 ${magneticStones.length}개의 자석 돌 생성됨`);
+            console.log(`🧱 ${virtualWalls.length}개의 가상 벽 생성됨`);
             
             // 연결선 먼저 그리기
             const centerCoord = physicsNodes.find(c => c.type === 'center');
@@ -1080,8 +1106,9 @@
         
         function updatePhysics() {
             const centerNode = physicsNodes.find(n => n.isCenter);
-            const damping = 0.98; // 🐟 마찰력 줄임 (더 활발하게)
+            const damping = 0.98;
             const dt = 0.016;
+            const currentTime = performance.now();
             
             physicsNodes.forEach((node, i) => {
                 if (node.isCenter) {
@@ -1111,9 +1138,74 @@
                     }
                     
                 } else {
-                    // 🐟 물고기들의 새로운 물리학!
+                    // 🐟 물고기들의 BRIO 미로 물리학!
                     
-                    // 1. 🪨 자석 돌의 도넛 자력 효과
+                    // 🧱 1. BRIO 가상벽 충돌 체크 (랜덤 발생)
+                    if (currentTime - node.lastWallCheck > 500) { // 0.5초마다 체크
+                        node.lastWallCheck = currentTime;
+                        
+                        // 랜덤하게 벽과 충돌 (30% 확률)
+                        if (Math.random() < 0.3) {
+                            const randomWall = virtualWalls[Math.floor(Math.random() * virtualWalls.length)];
+                            
+                            // 벽과의 거리 체크
+                            const distToWall = pointToLineDistance(node.x, node.y, randomWall.x1, randomWall.y1, randomWall.x2, randomWall.y2);
+                            
+                            if (distToWall < randomWall.thickness) {
+                                // 새로운 충돌 시작
+                                if (!node.wallCollisions.has(randomWall)) {
+                                    node.wallCollisions.set(randomWall, {
+                                        startTime: currentTime,
+                                        resistance: 1.0
+                                    });
+                                    console.log(`🐟 물고기 ${i}가 벽에 충돌! 😤`);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 🧱 2. 활성 벽 충돌 저항 계산
+                    let totalWallResistance = { x: 0, y: 0 };
+                    
+                    node.wallCollisions.forEach((collision, wall) => {
+                        const elapsedTime = (currentTime - collision.startTime) / 1000; // 초 단위
+                        
+                        // BRIO 저항도 계산: 100% → 70% → 30% → 0%
+                        let resistance = 0;
+                        if (elapsedTime < 1) {
+                            resistance = 1.0; // 100% 저항 (1초간)
+                        } else if (elapsedTime < 2) {
+                            resistance = 0.7; // 70% 저항 (1-2초)
+                        } else if (elapsedTime < 3) {
+                            resistance = 0.3; // 30% 저항 (2-3초)
+                        } else {
+                            resistance = 0; // 0% 저항 (3초 후)
+                            node.wallCollisions.delete(wall); // 충돌 종료
+                        }
+                        
+                        if (resistance > 0) {
+                            // 벽의 법선 벡터 계산
+                            const wallVx = wall.x2 - wall.x1;
+                            const wallVy = wall.y2 - wall.y1;
+                            const wallLength = Math.sqrt(wallVx * wallVx + wallVy * wallVy);
+                            
+                            if (wallLength > 0) {
+                                // 벽에 수직인 방향으로 저항
+                                const normalX = -wallVy / wallLength;
+                                const normalY = wallVx / wallLength;
+                                
+                                // 물고기 속도와 법선의 내적 (벽으로 향하는 속도)
+                                const velocityDotNormal = node.vx * normalX + node.vy * normalY;
+                                
+                                if (velocityDotNormal < 0) { // 벽 쪽으로 이동하는 경우만
+                                    totalWallResistance.x += normalX * Math.abs(velocityDotNormal) * resistance * 50;
+                                    totalWallResistance.y += normalY * Math.abs(velocityDotNormal) * resistance * 50;
+                                }
+                            }
+                        }
+                    });
+                    
+                    // 🪨 3. 자석 돌의 도넛 자력 효과
                     const stone = magneticStones.find(s => s.nodeIndex === i);
                     if (stone) {
                         const dx_stone = node.x - stone.targetX;
@@ -1121,19 +1213,16 @@
                         const dist_stone = Math.sqrt(dx_stone * dx_stone + dy_stone * dy_stone);
                         
                         if (dist_stone > 0) {
-                            // 도넛 영역 (밀어내기)
                             if (dist_stone > stone.coreRadius && dist_stone < stone.donutRadius) {
                                 const pushStrength = stone.pushForce * (1 - (dist_stone - stone.coreRadius) / (stone.donutRadius - stone.coreRadius));
-                                node.vx += (dx_stone / dist_stone) * pushStrength * dt * 60; // 🔥 더 강하게
+                                node.vx += (dx_stone / dist_stone) * pushStrength * dt * 60;
                                 node.vy += (dy_stone / dist_stone) * pushStrength * dt * 60;
                             }
-                            // 중심 영역 (끌어당기기) 
                             else if (dist_stone <= stone.coreRadius) {
                                 const pullStrength = stone.pullForce;
-                                node.vx -= (dx_stone / dist_stone) * pullStrength * dt * 50; // 🧲 끌어당김
+                                node.vx -= (dx_stone / dist_stone) * pullStrength * dt * 50;
                                 node.vy -= (dy_stone / dist_stone) * pullStrength * dt * 50;
                             }
-                            // 원거리에서는 목적지로 유도
                             else if (dist_stone > stone.donutRadius) {
                                 const guideForce = 0.03;
                                 node.vx -= (dx_stone / dist_stone) * guideForce * dt * 30;
@@ -1142,29 +1231,29 @@
                         }
                     }
                     
-                    // 2. 중심에 대한 약한 스프링 힘 (기존보다 약하게)
+                    // 4. 중심에 대한 약한 스프링 힘
                     const dx = centerNode.x - node.x;
                     const dy = centerNode.y - node.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
                     const targetDist = node.targetRadius || 300;
                     
                     if (dist > 0) {
-                        const springForce = 0.005; // 🔻 약하게 조정
+                        const springForce = 0.005;
                         const force = (dist - targetDist) * springForce;
                         node.vx += (dx / dist) * force * dt;
                         node.vy += (dy / dist) * force * dt;
                     }
                     
-                    // 3. 다른 물고기들과의 가벼운 충돌 방지
+                    // 5. 다른 물고기들과의 가벼운 충돌 방지
                     physicsNodes.forEach((other, j) => {
                         if (i !== j && !other.isCenter) {
                             const dx2 = other.x - node.x;
                             const dy2 = other.y - node.y;
                             const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-                            const minDist = (node.size + other.size) * 0.6; // 🔻 더 가까이 와도 OK
+                            const minDist = (node.size + other.size) * 0.6;
                             
                             if (dist2 < minDist && dist2 > 0) {
-                                const pushForce = 0.2; // 🔻 약한 밀어내기
+                                const pushForce = 0.2;
                                 const force = (minDist - dist2) * pushForce;
                                 node.vx -= (dx2 / dist2) * force * dt * 10;
                                 node.vy -= (dy2 / dist2) * force * dt * 10;
@@ -1172,27 +1261,60 @@
                         }
                     });
                     
-                    // 4. 경계 반발 (부드럽게)
+                    // 6. 경계 반발
                     const margin = 50;
                     if (node.x < margin) node.vx += (margin - node.x) * 0.005;
                     if (node.x > 1350) node.vx += (1350 - node.x) * 0.005;
                     if (node.y < margin) node.vy += (margin - node.y) * 0.005;
                     if (node.y > 1150) node.vy += (1150 - node.y) * 0.005;
                     
-                    // 5. 🌊 작은 랜덤 노이즈 (톡톡거림 효과)
+                    // 7. 🌊 작은 랜덤 노이즈 (톡톡거림 효과)
                     const noiseStrength = 0.1;
                     node.vx += (Math.random() - 0.5) * noiseStrength;
                     node.vy += (Math.random() - 0.5) * noiseStrength;
                     
+                    // 🧱 8. 벽 저항 적용
+                    node.vx += totalWallResistance.x * dt;
+                    node.vy += totalWallResistance.y * dt;
+                    
                     // 위치 업데이트
-                    node.x += node.vx * dt * 60; // 🚀 속도 증가
+                    node.x += node.vx * dt * 60;
                     node.y += node.vy * dt * 60;
                     
-                    // 마찰 적용 (약하게)
+                    // 마찰 적용
                     node.vx *= damping;
                     node.vy *= damping;
                 }
             });
+        }
+        
+        // 🧮 점과 직선 사이의 거리 계산 함수
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+            
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            
+            if (lenSq === 0) return Math.sqrt(A * A + B * B);
+            
+            let param = dot / lenSq;
+            
+            if (param < 0) {
+                return Math.sqrt(A * A + B * B);
+            } else if (param > 1) {
+                const E = px - x2;
+                const F = py - y2;
+                return Math.sqrt(E * E + F * F);
+            } else {
+                const xx = x1 + param * C;
+                const yy = y1 + param * D;
+                const dx = px - xx;
+                const dy = py - yy;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
         }
         
         function updateDOM() {
